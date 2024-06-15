@@ -10,7 +10,7 @@ def create_or_get_connection():
             password='Reza2001',
             host='localhost',
             port='5432',
-            dbname='development'
+            dbname='finbotincome'
         )
 
     CONN.autocommit = True
@@ -50,28 +50,23 @@ commands = {
         created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
         expired_at TIMESTAMP,
         status VARCHAR(20) CHECK (status IN ('Active', 'Paid', 'Expired', 'Failed')),
+        authority VARCHAR(36),
         user_id BIGINT REFERENCES user_table(id)""",
 
-    'payments_table' : """
-        id SERIAL PRIMARY KEY,
-        payment_date TIMESTAMP,
-        reference_id VARCHAR(20) UNIQUE NOT NULL,
-        invoice_id BIGINT REFERENCES invoice_table(id)""",
-    
-    'messages_table' : """
+    'ticket' : """
         id SERIAL PRIMARY KEY,
         title VARCHAR(50),
         text VARCHAR(500) NOT NULL""",
 
     'support_account_table' : """
         id SERIAL PRIMARY KEY,
-        platform VARCHAR(20) CHECK (platform IN ('telegram', 'gmail', 'phone'))
+        platform VARCHAR(20) CHECK (platform IN ('Telegram', 'Gmail', 'Phone')),
         value VARCHAR(255) NOT NULL""",
 
     'chanell_links_table' : """
         id SERIAL PRIMARY KEY,
         title VARCHAR(50),
-        link VARCHAR(500) NOT NULL""",
+        link VARCHAR(500) NOT NULL"""
 }
 
 class DBQuery:
