@@ -31,7 +31,7 @@ result = psql.DBQuery.fetchAllSQL(sql_query)
 LINKS = dict()
 
 for index in range(len(result)):
-    LINKS[index[1]] = index[2]
+    LINKS[result[index][1]] = result[index][2]
 
 
 
@@ -122,17 +122,12 @@ async def start(update: Update, context: CallbackContext):
     logger.warning("user %s started bot", update.effective_user.id) 
     
     #check if user joined via referral code
-    print('text:', update.message.text)   # /start something
-    print('args:', context.args)          # ['something']
 
-    print(len(context.args))
 
     if len(context.args) >= 1:
         referral = context.args[0]
-        print(referral)
         if referral.isnumeric():
             context.user_data['referral'] = referral
-            print(context.user_data['referral'])
 
 
     await context.bot.send_message(
@@ -196,6 +191,11 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
         )
 
+        try:
+            context.user_data["user_ticket"][0] = False
+        except:
+            pass
+
 
     elif query.data == "checkout":
 
@@ -252,30 +252,27 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         time_now = datetime.datetime.now()
 
-        #create invoice 
-        sql_query = f"INSERT INTO payment_invoice (amount,status,authority,telegram_profile_id,created_at) VALUES ('{ACCOUNT_VIP_AMOUNT}','Active','{authority}',(SELECT id FROM telegram_telegramprofile WHERE telegram_id='{user.id}'),'{time_now}');"
-        psql.run_sql(sql_query)
 
         
 
-        await query.edit_message_text(
-            text=f"فاکتور شما ایجاد گردید. مبلغ قابل پرداخت:\n\n {ACCOUNT_VIP_AMOUNT} تومان.\n\n جهت رفتن به درگاه پرداخت روی دکمه زیر کلیک نمایید.",
+        msg_id = await query.edit_message_text(
+            text=f"فاکتور شما ایجاد گردید. مبلغ قابل پرداخت:\n\n {ACCOUNT_VIP_AMOUNT} ریال.\n\n جهت رفتن به درگاه پرداخت روی دکمه زیر کلیک نمایید.",
             reply_markup=InlineKeyboardMarkup(
                 [
-                    [InlineKeyboardButton("💰 پرداخت", url=link)],
+                    [InlineKeyboardButton("💰 پرداخت", url=link,)],
                     [InlineKeyboardButton("🔙 بازگشت", callback_data='back')],
                 ]
             )
         )
 
+
+        
+        #create invoice 
+        sql_query = f"INSERT INTO payment_invoice (amount,status,authority,telegram_profile_id,created_at,msg_id) VALUES ('{ACCOUNT_VIP_AMOUNT}','Active','{authority}',(SELECT id FROM telegram_telegramprofile WHERE telegram_id='{user.id}'),'{time_now}','{msg_id.id}');"
+        psql.run_sql(sql_query)
+
         #except:
          #   await error_message(context=context, update=update, query=query)
-        
-        
-
-        
-
-
 
     elif query.data == "profile":
         if not cm:
@@ -289,70 +286,71 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 )
             )
         else:
-            user = update.effective_user
-
-            sql_query = f"SELECT * FROM telegram_telegramprofile WHERE telegram_id={user.id};"
-            result = psql.DBQuery.fetchAllSQL(sql_query)
-
-            
-            sql_query = f"SELECT * FROM payment_invoice WHERE telegram_profile_id=(SELECT id FROM telegram_telegramprofile WHERE telegram_id='{user.id}');"
-            payment_detail = psql.DBQuery.fetchAllSQL(sql_query)
-
-
-
-            payment_date = payment_detail[0][2]
-            result = result[0]
-            access_level = ""
-
-            if result[7] == "Allowed":
-                access_level = "عضویت ویژه"
-            else:
-                access_level = "عضویت معمولی"
-
-            await query.edit_message_text(
-                text=f"👤 نام کاربری: {result[2]}\n\n🏆 امتیاز: {result[6]}\n\n🔗 لینک دعوت شما:\n <pre>{result[5]}</pre>\n\n📌 نوع عضویت: {access_level}\n\n ⏱ عضو شده در: {payment_date.strftime('%Y/%m/%d')}\n\n ⌛️ اعتبار حساب تا: ---\n\n<b>Traid assistant</b>",
-                reply_markup=InlineKeyboardMarkup(
-                    [
-                        [InlineKeyboardButton("🔙 بازگشت", callback_data='back')],
-                    ]
-                ),
-                parse_mode="HTML"
-            )
-            print("By")
             try:
-                print("Hi")
-                referral = context.user_data['referral']
-                print(referral)
-            except:
-                pass
-            else:
-                sql_query = f"SELECT referral_code FROM telegram_telegramprofile WHERE telegram_id='{user.id}';"
+                user = update.effective_user
+
+                sql_query = f"SELECT * FROM telegram_telegramprofile WHERE telegram_id={user.id};"
                 result = psql.DBQuery.fetchAllSQL(sql_query)
 
-                print(result[0][0])
+                
+                sql_query = f"SELECT * FROM payment_invoice WHERE telegram_profile_id=(SELECT id FROM telegram_telegramprofile WHERE telegram_id='{user.id}');"
+                payment_detail = psql.DBQuery.fetchAllSQL(sql_query)
 
-                #referral code
-                if result[0][0] == None:
-                    sql_query = f"UPDATE telegram_telegramprofile SET referral_code='{referral}' WHERE telegram_id='{user.id}';"
-                    psql.run_sql(sql_query)
-                    sql_query = f"SELECT score,user_name FROM telegram_telegramprofile WHERE telegram_id='{referral}';"
+
+
+                payment_date = payment_detail[0][2]
+                result = result[0]
+                access_level = ""
+
+                if result[7] == "Allowed":
+                    access_level = "عضویت ویژه"
+                else:
+                    access_level = "عضویت معمولی"
+
+                await query.edit_message_text(
+                    text=f"👤 نام کاربری: {result[2]}\n\n🏆 امتیاز: {result[6]}\n\n🔗 لینک دعوت شما:\n <pre>{result[5]}</pre>\n\n📌 نوع عضویت: {access_level}\n\n ⏱ عضو شده در: {payment_date.strftime('%Y/%m/%d')}\n\n ⌛️ اعتبار حساب تا: ---\n\n<b>Traid assistant</b>",
+                    reply_markup=InlineKeyboardMarkup(
+                        [
+                            [InlineKeyboardButton("🔙 بازگشت", callback_data='back')],
+                        ]
+                    ),
+                    parse_mode="HTML"
+                )
+                try:
+                    referral = context.user_data['referral']
+                except:
+                    pass
+                else:
+                    sql_query = f"SELECT referral_code FROM telegram_telegramprofile WHERE telegram_id='{user.id}';"
                     result = psql.DBQuery.fetchAllSQL(sql_query)
-                    score = int(result[0][0])
-                    score += 5
-                    username = result[0][1]
-                    print("Score: ", score)
-                    sql_query = f"UPDATE telegram_telegramprofile SET score='{score}' WHERE telegram_id='{referral}';"
-                    psql.run_sql(sql_query)
 
-                    await context.bot.send_message(
-                        chat_id=update.effective_chat.id,
-                        text=f"شما از طریق کاربر {username} به ربات دعوت شده اید. این کد تایید گردید و تعداد 5 امتیاز به حساب ایشان اضافه گردید.\n\n شما هم می توانید با دعوت دوستانتان از طریق این کد امتیاز خود را افزایش دهید و کسب درآمد کنید"
-                    )
 
-                    await context.bot.send_message(
-                        chat_id=referral,
-                        text="پیام ربات:\n\nتعداد 5 امتیازات به مجموع امتیاز شما اضافه گردید"
-                    )
+                    #referral code
+                    if result[0][0] == None:
+                        sql_query = f"UPDATE telegram_telegramprofile SET referral_code='{referral}' WHERE telegram_id='{user.id}';"
+                        psql.run_sql(sql_query)
+                        sql_query = f"SELECT score,user_name FROM telegram_telegramprofile WHERE telegram_id='{referral}';"
+                        result = psql.DBQuery.fetchAllSQL(sql_query)
+                        score = int(result[0][0])
+                        score += 5
+                        username = result[0][1]
+                        sql_query = f"UPDATE telegram_telegramprofile SET score='{score}' WHERE telegram_id='{referral}';"
+                        psql.run_sql(sql_query)
+
+                        await context.bot.send_message(
+                            chat_id=update.effective_chat.id,
+                            text=f"شما از طریق کاربر {username} به ربات دعوت شده اید. این کد تایید شد و تعداد 5 امتیاز به حساب ایشان اضافه گردید.\n\n شما هم می توانید با دعوت دوستانتان از طریق این کد امتیاز خود را افزایش دهید و کسب درآمد کنید"
+                        )
+
+                        await context.bot.send_message(
+                            chat_id=referral,
+                            text="پیام ربات:\n\nتعداد 5 امتیازات به مجموع امتیاز شما اضافه گردید"
+                        )
+            except:
+                await context.bot.send_message(
+                    chat_id=update.effective_chat.id,
+                    text = 'مشکلی پیش آمد، از منوی زیر ربات را دوباره راه اندازی کنید'
+                )
 
     elif not cm:
         await query.edit_message_text(
@@ -374,9 +372,11 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     ]
                 )
             )
+
+
         elif query.data == "trading_bot":
             await query.edit_message_text(
-                text="برای دریافت فایل ربات ها، گزینه مشاهده اسکریپت ها را انتخاب نمایید",
+                text="ربات های تریدر، برای دریافت سورس این ربات ها روی لینک زیر کلیک نمایید",
                 reply_markup=InlineKeyboardMarkup(
                     [
                         [InlineKeyboardButton("📥 مشاهده اسکریپت ها ", url=LINKS['TraderBot'])],
@@ -384,9 +384,73 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     ]
                 )
             )
+
+
+
+        elif query.data == "airdrop":
+            await query.edit_message_text(
+                text="با عضویت در کانال معرفی ایردراپ ها، می توانید از پروژه هایی دارای آینده روشن استفاده و سرمایه گذاری کنید.",
+                reply_markup=InlineKeyboardMarkup(
+                    [
+                        [InlineKeyboardButton("📥 لینک", url=LINKS['Airdrop'])],
+                        [InlineKeyboardButton("🔙 بازگشت", callback_data='back')],
+                    ]
+                )
+            )
+
+
+        elif query.data == "potential_currencies":
+            await query.edit_message_text(
+                text="با عضویت در کانال معرفی ارز های پر پتانسیل، از معرفی ارز هایی با سود دهی بالا در بلند مدت و کوتاه مدت، جا نمانید!",
+                reply_markup=InlineKeyboardMarkup(
+                    [
+                        [InlineKeyboardButton("📥 لینک ", url=LINKS['PotentialCurrencies'])],
+                        [InlineKeyboardButton("🔙 بازگشت", callback_data='back')],
+                    ]
+                )
+            ) 
+
+
+        elif query.data == "eduction":
+            await query.edit_message_text(
+                text="با عضویت در کانال آموزش، از تمامی خدماتی که ما ارائه می دهیم و همچنین نحوه استفاده از آن ها مطلع شوید.",
+                reply_markup=InlineKeyboardMarkup(
+                    [
+                        [InlineKeyboardButton("📥 لینک ", url=LINKS['Eduction'])],
+                        [InlineKeyboardButton("🔙 بازگشت", callback_data='back')],
+                    ]
+                )
+            ) 
+
+
+        
+        elif query.data == "support":
+
+            sql_query = "SELECT * FROM telegram_supportaccount"
+            result = psql.DBQuery.fetchAllSQL(sql_query=sql_query)
+
+            support_account = ""
+
+            for i in result:
+                support_account += f"'{i[1]}':  {i[2]}\n"
+
+            message = await query.edit_message_text(
+                text=f"اکنون مشکل و یا طرح سئوال خود را برای پشتیبانی ما بنویسید تا در اسرع وقت از طریق همین ربات و یا به صورت مستقیم همکاران ما با شما ارتباط بگیرند.\n\n همچنین راه های ارتباطی با ما:\n{support_account}",
+                reply_markup=InlineKeyboardMarkup(
+                    [
+                        [InlineKeyboardButton("🔙 بازگشت", callback_data='back')],
+                    ]
+                )
+            )
+
+        
+
+            context.user_data['user_ticket'] = [True, message.id]
+
+
         elif query.data == "earn_money":
             await query.edit_message_text(
-                text="یکی از خدمات زیر را انتخاب کنید",
+                text="برای اطلاع کامل از نحوه کسب درآمد از طریق ربات، به کانال آموزش سر بزنید.\n\n از خدمات زیر یکی را برگزینید.",
                 reply_markup=InlineKeyboardMarkup(
                     [
                         [InlineKeyboardButton("🔗 ثبت نام بروکر", url=LINKS['Broker'])],
@@ -412,6 +476,36 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
 
 
+async def support_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        message = context.user_data['user_ticket']
+    except:
+        return
+    else:
+        if context.user_data['user_ticket'][0]:
+            user = update.effective_user.id
+            message = update.effective_message.text
+            datetime_created = datetime.datetime.now()
+
+            sql_query = f"INSERT INTO telegram_telegramticket (telegram_account_id,text,created,status) VALUES ((SELECT id FROM telegram_telegramprofile WHERE telegram_id='{user}'),'{message}','{datetime_created}','Open');"
+            psql.run_sql(sql_query)
+
+            await context.bot.delete_message(
+                chat_id=update.effective_chat.id,
+                message_id=context.user_data['user_ticket'][1]
+            )
+
+            await context.bot.send_message(
+                chat_id = update.effective_chat.id,
+                text = "تیکت شما ما موفقیت ثبت شد. همکاران ما در اسرع وقت پاسخ شما را خواهند داد. از صبوری شما سپاس گذاریم.",
+                reply_markup=InlineKeyboardMarkup(
+                        [
+                            [InlineKeyboardButton("🔙 بازگشت", callback_data='back')],
+                        ]
+                    ),
+            )
+
+            context.user_data['user_ticket'][0] = False
 
 
 if __name__ == "__main__":
@@ -420,6 +514,8 @@ if __name__ == "__main__":
     application = ApplicationBuilder().token(token=TOKEN).build()
     application.add_handler(CommandHandler('start', start, has_args=True))
     application.add_handler(CommandHandler('start', start))
+    application.add_handler(CommandHandler('menu', start))
     application.add_handler(CommandHandler('checkout', checkout))
     application.add_handler(CallbackQueryHandler(button_handler))
+    application.add_handler(MessageHandler(filters=filters.ALL, callback=support_messages))
     application.run_polling()
