@@ -3,36 +3,8 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, helpers
 import db as psql
 import logging, datetime, json
 from payments import zarinpal
-
-
-#import teleton
-#from unidecode import unidecode
-
-#Token
-TOKEN = "7111711383:AAH5xL-FunByrIZvV_HyWr2y7d5e1UqKELo"
-
-#Important variables
-ADMINS = ["5538826229"]
-
-sql_query = "SELECT * FROM telegram_vipaccountamount;"
-result = psql.DBQuery.fetchAllSQL(sql_query)
-amount = result[0][1]
-
-ACCOUNT_VIP_AMOUNT = int(amount) #Unit: IR
-
-#Get support telegram from DB
-SUPPORT_EMAILS = list()
-SUPPORT_TELEGRAM_IDS = list()
-
-
-#Get all of links from DB
-sql_query = "SELECT * FROM telegram_telegramchannels;"
-result = psql.DBQuery.fetchAllSQL(sql_query)
-LINKS = dict()
-
-for index in range(len(result)):
-    LINKS[result[index][1]] = result[index][2]
-
+import bot_config
+from datetime import timedelta
 
 
 
@@ -44,7 +16,7 @@ KEYBOARD = [
     [InlineKeyboardButton("🤖 ربات معامله گر", callback_data="trading_bot")],
     [InlineKeyboardButton("💰 کسب درآمد", callback_data="earn_money")],
     [InlineKeyboardButton("💎 ارزهای پر پتانسیل", callback_data="potential_currencies")],
-    [InlineKeyboardButton("💵 بونوس", url=LINKS['Bonus'])],
+    [InlineKeyboardButton("💵 بونوس", url=bot_config.LINKS['Bonus'])],
     [InlineKeyboardButton("🧑🏻‍🏫 آموزش", callback_data="eduction")],
     [InlineKeyboardButton("📞 پشتیبانی", callback_data="support")],
 ]
@@ -88,7 +60,25 @@ def check_membership_access_level(user_id):
 
     if user:
         KEYBOARD[0] = [InlineKeyboardButton("👤 مشاهده پروفایل", callback_data="profile")]
+        
         if user[0][1] == "Allowed":
+            
+            #check_expired_account
+            sql_query = f"SELECT * FROM payment_invoice WHERE telegram_profile_id=(SELECT id FROM telegram_telegramprofile WHERE telegram_id='{user_id}');"
+            payment_detail = psql.DBQuery.fetchAllSQL(sql_query)
+
+            expired_date = payment_detail[0][3]
+
+            
+            if expired_date:
+                time_now = datetime.datetime.now()
+                try:
+                    if expired_date < time_now:
+                        sql_query = f"UPDATE telegram_telegramprofile SET access_level='Unallowable' WHERE telegram_id='{user.id}';"
+                        result = psql.run_sql(sql_query)
+                        return False
+                except:
+                    return True    
             return True
         else:
             return False
@@ -110,9 +100,6 @@ def check_member_ship(user_id):
         return True
     return False
 
-CHECK_THIS_OUT = "check-this-out"
-
-
 
 
 async def start(update: Update, context: CallbackContext):
@@ -129,6 +116,8 @@ async def start(update: Update, context: CallbackContext):
         if referral.isnumeric():
             context.user_data['referral'] = referral
 
+    user_id = update.effective_user.id
+    check_membership_access_level(user_id=user_id)
 
     await context.bot.send_message(
         chat_id = update.effective_chat.id,
@@ -137,25 +126,6 @@ async def start(update: Update, context: CallbackContext):
             KEYBOARD
         )
     )
-
-async def checkout(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    print(context.args)
-    await context.bot.send_message(
-            chat_id = update.effective_chat.id,
-            text = "🔰 با تشکر از انتخاب شما\n\n لطفا یکی از خدمات زیر را انتخاب فرمایید" ,
-        )
-
-async def get_data():
-    """
-    ->   This function from Teleton module checks whether the transaction number
-         entered by the user is acceptable or not
-    """
-    #client = teleton.client
-    #async with client:
-    #    main = await teleton.main()
-    #    return main
-
-
 
 
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -196,29 +166,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except:
             pass
 
-
-    elif query.data == "checkout":
-
-        logger.warning("user %s on stage checkout.", update.effective_user.id)
-        check_paid = ""
-        if check_paid:
-            check_membership_access_level(user.id)
-
-            await query.delete_message()
-            await context.bot.send_message(
-                chat_id=update.effective_chat.id,
-                text="پرداخت شما موفقیت آمیز بود، اکنون میتوانید از ربات استفاده کنید",
-                reply_markup=InlineKeyboardMarkup(
-                    KEYBOARD
-                )
-            )
-
-
-
-            logger.warning("user %s has entered a code, and change status to Allowed successfully!", user.id)
-
-
-
     elif query.data == "payment":
         user = update.effective_user
 
@@ -229,12 +176,12 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         #if user is not registered
         if (not cm_and_type) and (not check_member):
-            invitation_link = f"https://t.me/traidassistant_bot?start={user.id}"
+            invitation_link = f"https://t.me/{bot_config.BOT_USERNAME}?start={user.id}"
             sql_query = f"INSERT INTO telegram_telegramprofile (telegram_id,user_name,full_name,access_level,invitation_link,score) VALUES ('{user.id}','{user.username}','{user.full_name}','Unallowable','{invitation_link}',0);"
             psql.run_sql(sql_query)
             logger.warning("user %s registered.", user.id)
 
-        request = zarinpal.send_request(amount=ACCOUNT_VIP_AMOUNT)
+        request = zarinpal.send_request(amount=bot_config.ACCOUNT_VIP_AMOUNT)
 
 
         #try:
@@ -256,7 +203,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
 
         msg_id = await query.edit_message_text(
-            text=f"فاکتور شما ایجاد گردید. مبلغ قابل پرداخت:\n\n {ACCOUNT_VIP_AMOUNT} ریال.\n\n جهت رفتن به درگاه پرداخت روی دکمه زیر کلیک نمایید.",
+            text=f"فاکتور شما ایجاد گردید. مبلغ قابل پرداخت:\n\n {bot_config.ACCOUNT_VIP_AMOUNT} ریال.\n\n جهت رفتن به درگاه پرداخت روی دکمه زیر کلیک نمایید.",
             reply_markup=InlineKeyboardMarkup(
                 [
                     [InlineKeyboardButton("💰 پرداخت", url=link,)],
@@ -268,7 +215,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         
         #create invoice 
-        sql_query = f"INSERT INTO payment_invoice (amount,status,authority,telegram_profile_id,created_at,msg_id) VALUES ('{ACCOUNT_VIP_AMOUNT}','Active','{authority}',(SELECT id FROM telegram_telegramprofile WHERE telegram_id='{user.id}'),'{time_now}','{msg_id.id}');"
+        sql_query = f"INSERT INTO payment_invoice (amount,status,authority,telegram_profile_id,created_at,msg_id) VALUES ('{bot_config.ACCOUNT_VIP_AMOUNT}','Active','{authority}',(SELECT id FROM telegram_telegramprofile WHERE telegram_id='{user.id}'),'{time_now}','{msg_id.id}');"
         psql.run_sql(sql_query)
 
         #except:
@@ -289,7 +236,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             try:
                 user = update.effective_user
 
-                sql_query = f"SELECT * FROM telegram_telegramprofile WHERE telegram_id={user.id};"
+                sql_query = f"SELECT * FROM telegram_telegramprofile WHERE telegram_id='{user.id}';"
                 result = psql.DBQuery.fetchAllSQL(sql_query)
 
                 
@@ -297,8 +244,34 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 payment_detail = psql.DBQuery.fetchAllSQL(sql_query)
 
 
-
                 payment_date = payment_detail[0][2]
+                expired_date = payment_detail[0][3]
+
+                #check_expired_account
+                if expired_date:
+                    time_now = datetime.datetime.now()
+                    try:
+                        if expired_date.strptime(expired_date.strftime("%Y%m%d"), "%Y%m%d") < time_now.strptime(time_now.strftime("%Y%m%d"), "%Y%m%d"):
+                            sql_query = f"UPDATE telegram_telegramprofile SET access_level='Unallowable' WHERE telegram_id='{user.id}';"
+                            result = psql.run_sql(sql_query)
+
+                            await query.edit_message_text(
+                                text="اعتبار حساب شما به پایان رسیده است، جهت تمدید عضویت ویژه خود اقدام نمایید.",
+                                reply_markup=InlineKeyboardMarkup(
+                                    [
+                                        [InlineKeyboardButton("💰 خرید اشتراک ویژه", callback_data="payment")],
+                                        [InlineKeyboardButton("🔙 بازگشت", callback_data='back')],
+                                    ]
+                                )
+                            )
+
+                            return
+                        expired_date = expired_date.strftime('%Y/%m/%d')
+                    except:
+                        expired_date = "---"
+                else:
+                    expired_date = "---"
+
                 result = result[0]
                 access_level = ""
 
@@ -308,7 +281,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     access_level = "عضویت معمولی"
 
                 await query.edit_message_text(
-                    text=f"👤 نام کاربری: {result[2]}\n\n🏆 امتیاز: {result[6]}\n\n🔗 لینک دعوت شما:\n <pre>{result[5]}</pre>\n\n📌 نوع عضویت: {access_level}\n\n ⏱ عضو شده در: {payment_date.strftime('%Y/%m/%d')}\n\n ⌛️ اعتبار حساب تا: ---\n\n<b>Traid assistant</b>",
+                    text=f"👤 نام کاربری: {result[2]}\n\n🏆 امتیاز: {result[6]}\n\n🔗 لینک دعوت شما:\n <pre>{result[5]}</pre>\n\n📌 نوع عضویت: {access_level}\n\n ⏱ عضو شده در: {payment_date.strftime('%Y/%m/%d')}\n\n ⌛️ اعتبار حساب تا: {expired_date}\n\n<b>{bot_config.BOT_NAME}</b>",
                     reply_markup=InlineKeyboardMarkup(
                         [
                             [InlineKeyboardButton("🔙 بازگشت", callback_data='back')],
@@ -366,8 +339,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 text="یکی از خدمات زیر را انتخاب کنید",
                 reply_markup=InlineKeyboardMarkup(
                     [
-                        [InlineKeyboardButton("📈 سیگنال فارکس", url=LINKS['Forex'])],
-                        [InlineKeyboardButton("📉 سیگنال کریپتو", url=LINKS['Crypto'])],
+                        [InlineKeyboardButton("📈 سیگنال فارکس", url=bot_config.LINKS['Forex'])],
+                        [InlineKeyboardButton("📉 سیگنال کریپتو", url=bot_config.LINKS['Crypto'])],
                         [InlineKeyboardButton("🔙 بازگشت", callback_data='back')],
                     ]
                 )
@@ -379,7 +352,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 text="ربات های تریدر، برای دریافت سورس این ربات ها روی لینک زیر کلیک نمایید",
                 reply_markup=InlineKeyboardMarkup(
                     [
-                        [InlineKeyboardButton("📥 مشاهده اسکریپت ها ", url=LINKS['TraderBot'])],
+                        [InlineKeyboardButton("📥 مشاهده اسکریپت ها ", url=bot_config.LINKS['TraderBot'])],
                         [InlineKeyboardButton("🔙 بازگشت", callback_data='back')],
                     ]
                 )
@@ -392,7 +365,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 text="با عضویت در کانال معرفی ایردراپ ها، می توانید از پروژه هایی دارای آینده روشن استفاده و سرمایه گذاری کنید.",
                 reply_markup=InlineKeyboardMarkup(
                     [
-                        [InlineKeyboardButton("📥 لینک", url=LINKS['Airdrop'])],
+                        [InlineKeyboardButton("📥 لینک", url=bot_config.LINKS['Airdrop'])],
                         [InlineKeyboardButton("🔙 بازگشت", callback_data='back')],
                     ]
                 )
@@ -404,7 +377,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 text="با عضویت در کانال معرفی ارز های پر پتانسیل، از معرفی ارز هایی با سود دهی بالا در بلند مدت و کوتاه مدت، جا نمانید!",
                 reply_markup=InlineKeyboardMarkup(
                     [
-                        [InlineKeyboardButton("📥 لینک ", url=LINKS['PotentialCurrencies'])],
+                        [InlineKeyboardButton("📥 لینک ", url=bot_config.LINKS['PotentialCurrencies'])],
                         [InlineKeyboardButton("🔙 بازگشت", callback_data='back')],
                     ]
                 )
@@ -416,7 +389,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 text="با عضویت در کانال آموزش، از تمامی خدماتی که ما ارائه می دهیم و همچنین نحوه استفاده از آن ها مطلع شوید.",
                 reply_markup=InlineKeyboardMarkup(
                     [
-                        [InlineKeyboardButton("📥 لینک ", url=LINKS['Eduction'])],
+                        [InlineKeyboardButton("📥 لینک ", url=bot_config.LINKS['Eduction'])],
                         [InlineKeyboardButton("🔙 بازگشت", callback_data='back')],
                     ]
                 )
@@ -453,7 +426,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 text="برای اطلاع کامل از نحوه کسب درآمد از طریق ربات، به کانال آموزش سر بزنید.\n\n از خدمات زیر یکی را برگزینید.",
                 reply_markup=InlineKeyboardMarkup(
                     [
-                        [InlineKeyboardButton("🔗 ثبت نام بروکر", url=LINKS['Broker'])],
+                        [InlineKeyboardButton("🔗 ثبت نام بروکر", url=bot_config.LINKS['Broker'])],
                         [InlineKeyboardButton("📮 دریافت کد معرف شما", callback_data="referral")],
                         [InlineKeyboardButton("🔙 بازگشت", callback_data='back')],
                     ]
@@ -511,11 +484,10 @@ async def support_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
 if __name__ == "__main__":
     logger.warning("starting bot ...")
 
-    application = ApplicationBuilder().token(token=TOKEN).build()
+    application = ApplicationBuilder().token(token=bot_config.TOKEN).build()
     application.add_handler(CommandHandler('start', start, has_args=True))
     application.add_handler(CommandHandler('start', start))
     application.add_handler(CommandHandler('menu', start))
-    application.add_handler(CommandHandler('checkout', checkout))
     application.add_handler(CallbackQueryHandler(button_handler))
     application.add_handler(MessageHandler(filters=filters.ALL, callback=support_messages))
     application.run_polling()
